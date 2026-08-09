@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rules for cloud backups and device transfers in Android 12+ -->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Exclude the massive local LLM models from backup -->
+        <exclude domain="file" path="llm" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Exclude the massive local LLM models from device transfer -->
+        <exclude domain="file" path="llm" />
+    </device-transfer>
+</data-extraction-rules>

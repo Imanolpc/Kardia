@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backup rules for older Android versions (Full Backup API) -->
+<full-backup-content>
+    <!-- Exclude the massive local LLM models from backup -->
+    <exclude domain="file" path="llm" />
+</full-backup-content>

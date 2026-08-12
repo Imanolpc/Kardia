@@ -223,10 +223,11 @@ fun IdleGeneratorLayout(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Kardia Local AI",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+                        )
                     )
                 )
             }

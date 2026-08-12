@@ -144,7 +144,7 @@ class AnkiDroidConnector(private val context: Context) {
                 it.value.equals(modelName, ignoreCase = true)
             }?.key
 
-            existingModelId ?: api.addNewModel(
+            existingModelId ?: api.addNewCustomModel(
                 modelName,
                 arrayOf("Front", "Back"), // Campos
                 arrayOf("Card 1"),        // Nombre de plantilla

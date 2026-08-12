@@ -2,7 +2,6 @@ package com.kardia.app.core.ai
 
 import android.content.Context
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
-import com.google.mediapipe.tasks.genai.llminference.LlmInferenceOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -46,18 +45,18 @@ class LocalLLMManager(private val context: Context) {
                 val client = OkHttpClient()
                 val request = Request.Builder().url(url).build()
 
-                try.trySend(DownloadStatus.Progress(0.0f, "Iniciando descarga..."))
+                trySend(DownloadStatus.Progress(0.0f, "Iniciando descarga..."))
 
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-                        try.trySend(DownloadStatus.Error(Exception("Error de servidor: ${response.code}")))
+                        trySend(DownloadStatus.Error(Exception("Error de servidor: ${response.code}")))
                         close()
                         return@use
                     }
 
                     val body = response.body
                     if (body == null) {
-                        try.trySend(DownloadStatus.Error(Exception("Cuerpo de respuesta vacío")))
+                        trySend(DownloadStatus.Error(Exception("Cuerpo de respuesta vacío")))
                         close()
                         return@use
                     }
@@ -74,7 +73,7 @@ class LocalLLMManager(private val context: Context) {
                                 bytesCopied += bytesRead
                                 
                                 val progress = if (totalBytes > 0) bytesCopied.toFloat() / totalBytes else 0.0f
-                                try.trySend(
+                                trySend(
                                     DownloadStatus.Progress(
                                         progress = progress,
                                         message = "Descargando modelo: ${(progress * 100).toInt()}%"
@@ -87,14 +86,14 @@ class LocalLLMManager(private val context: Context) {
 
                     // Renombrar el archivo temporal al nombre definitivo una vez completado sin errores
                     if (tempFile.renameTo(modelFile)) {
-                        try.trySend(DownloadStatus.Success(modelFile.absolutePath))
+                        trySend(DownloadStatus.Success(modelFile.absolutePath))
                     } else {
-                        try.trySend(DownloadStatus.Error(Exception("Error al renombrar el archivo temporal")))
+                        trySend(DownloadStatus.Error(Exception("Error al renombrar el archivo temporal")))
                     }
                     close()
                 }
             } catch (e: Exception) {
-                try.trySend(DownloadStatus.Error(e))
+                trySend(DownloadStatus.Error(e))
                 close()
             }
         }
@@ -115,9 +114,8 @@ class LocalLLMManager(private val context: Context) {
             llmInference?.close()
 
             // Configurar LiteRT-LM según especificaciones técnicas de 2026
-            val options = LlmInferenceOptions.builder()
+            val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
-                .setTemperature(0.4f)   // 0.4 para balancear precisión y creatividad
                 .setMaxTopK(40)         // topK = 40
                 .setMaxTokens(2048)     // Contexto limitado para batería y RAM
                 .build()

@@ -1,6 +1,6 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -33,20 +33,18 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
     }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {
@@ -66,8 +64,8 @@ dependencies {
     // LiteRT-LM (MediaPipe GenAI SDK)
     implementation("com.google.mediapipe:tasks-genai:0.10.27")
 
-    // AnkiDroid API for direct injection
-    implementation("com.ichi2.anki:ankidroid-api:1.0.0")
+    // AnkiDroid API for direct injection (JitPack)
+    implementation("com.github.ankidroid:Anki-Android:api-v1.1.0")
 
     // OkHttp for OTA Download
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

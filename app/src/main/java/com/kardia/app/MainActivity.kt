@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.kardia.app.ui.generator.GeneratorScreen
+import com.kardia.app.ui.generator.GeneratorViewModel
 import com.kardia.app.ui.theme.KardiaTheme
 
 class MainActivity : ComponentActivity() {

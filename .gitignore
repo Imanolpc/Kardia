@@ -18,3 +18,8 @@ local.properties
 
 # Temporary compile caches
 **/exports/*
+
+# Heap dumps and Screenshots
+*.hprof
+screenshot.png
+

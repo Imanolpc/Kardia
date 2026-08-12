@@ -139,7 +139,58 @@ fun ModelDownloadLayout(
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Explicación premium de error 401 e instrucciones de alojamiento público
+        androidx.compose.material3.Card(
+            colors = androidx.compose.material3.CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "💡 Solución al error 401 (Acceso Protegido)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "El repositorio oficial de Google en Hugging Face está protegido por licencia (gated) y da error 401. Para descargarlo de forma directa e ilimitada de por vida, sube el archivo a un sitio público:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Opción A: GitHub Releases (Recomendado)\nSube el archivo '.task' como un asset en los Releases de tu repositorio Kardia. Tendrás descarga directa rápida y gratis.",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Button(
+                    onClick = { modelUrl = "https://github.com/Imanolpc/Kardia/releases/download/v1.0.0/gemma-3-1b-it-q4.task" },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    modifier = Modifier.align(Alignment.End),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Text("Usar plantilla de enlace GitHub", style = MaterialTheme.typography.labelSmall)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Opción B: Dropbox o OneDrive\nSube el archivo a Dropbox y comparte un enlace público. Reemplaza el final 'dl=0' por 'dl=1' para habilitar descarga directa.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
             value = modelUrl,
@@ -153,7 +204,7 @@ fun ModelDownloadLayout(
 
         if (state.isDownloading) {
             LinearProgressIndicator(
-                progress = state.downloadProgress,
+                progress = { state.downloadProgress },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp),

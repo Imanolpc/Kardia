@@ -95,26 +95,6 @@ fun GeneratorScreen(
     }
 }
 
-enum class ModelOption(
-    val displayName: String,
-    val description: String,
-    val sizeLabel: String,
-    val downloadUrl: String
-) {
-    GEMMA_2B(
-        displayName = "Gemma-2B IT (GPU)",
-        description = "Recomendado. Inferencia local ultra-rápida con GPU integrada y precisión excepcional.",
-        sizeLabel = "1.26 GB",
-        downloadUrl = "https://github.com/Imanolpc/Kardia/releases/download/v1.0.0/gemma-3-1b-it-q4.task"
-    ),
-    CUSTOM(
-        displayName = "Enlace Personalizado (Avanzado)",
-        description = "Especifica tu propia URL para descargar otro modelo compatible con LiteRT (.task / .bin).",
-        sizeLabel = "Variable",
-        downloadUrl = ""
-    )
-}
-
 /**
  * 1. PANTALLA DE DESCARGA OTA (Modelo no disponible)
  */
@@ -123,14 +103,7 @@ fun ModelDownloadLayout(
     state: GeneratorState.ModelNotDownloaded,
     onDownloadClick: (String) -> Unit
 ) {
-    var selectedOption by remember { mutableStateOf(ModelOption.GEMMA_2B) }
-    var customUrl by remember { mutableStateOf("") }
-
-    val modelUrl = if (selectedOption == ModelOption.GEMMA_2B) {
-        ModelOption.GEMMA_2B.downloadUrl
-    } else {
-        customUrl
-    }
+    val modelUrl = "https://github.com/Imanolpc/Kardia/releases/download/v1.0.0/gemma-3-1b-it-q4.task"
 
     Column(
         modifier = Modifier
@@ -168,7 +141,7 @@ fun ModelDownloadLayout(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "Selecciona el Modelo a Instalar:",
+            text = "Modelos Disponibles:",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.align(Alignment.Start)
@@ -176,74 +149,49 @@ fun ModelDownloadLayout(
         
         Spacer(modifier = Modifier.height(12.dp))
 
-        ModelOption.values().forEach { option ->
-            val isSelected = selectedOption == option
-            Card(
-                onClick = { if (!state.isDownloading) selectedOption = option },
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isSelected) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                    }
-                ),
-                border = androidx.compose.foundation.BorderStroke(
-                    width = if (isSelected) 2.dp else 1.dp,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp)
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 2.dp,
+                color = MaterialTheme.colorScheme.primary
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = { if (!state.isDownloading) selectedOption = option },
-                        enabled = !state.isDownloading
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = option.displayName,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = option.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = option.sizeLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        text = "Gemma-2B IT (GPU)",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Inferencia local con GPU integrada y precisión excepcional.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "1.26 GB",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
-        }
-
-        if (selectedOption == ModelOption.CUSTOM) {
-            Spacer(modifier = Modifier.height(16.dp))
-            OutlinedTextField(
-                value = customUrl,
-                onValueChange = { customUrl = it },
-                label = { Text("URL de Descarga del Modelo (.task/.bin)") },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.isDownloading,
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Nota: Asegúrate de que el enlace permita descarga directa (por ejemplo, con dl=1 en Dropbox o como un asset de GitHub Release). Los enlaces protegidos por login darán error 401.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -266,7 +214,6 @@ fun ModelDownloadLayout(
         } else {
             Button(
                 onClick = { onDownloadClick(modelUrl) },
-                enabled = selectedOption != ModelOption.CUSTOM || customUrl.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)

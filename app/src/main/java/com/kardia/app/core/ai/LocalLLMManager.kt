@@ -18,7 +18,7 @@ class LocalLLMManager(private val context: Context) {
 
     // Ruta de almacenamiento obligatoria
     private val modelDirectory = File(context.filesDir, "llm")
-    val modelFile = File(modelDirectory, "gemma-3-1b-it-q4.task")
+    val modelFile = File(modelDirectory, "gemma-2b-it-cpu-int4.bin")
 
     /**
      * Verifica si el archivo del modelo ya existe de forma local.
@@ -39,7 +39,7 @@ class LocalLLMManager(private val context: Context) {
                 }
 
                 // Usamos un archivo temporal para evitar archivos corruptos a medio descargar
-                val tempFile = File(modelDirectory, "gemma-3-1b-it-q4.task.tmp")
+                val tempFile = File(modelDirectory, "gemma-2b-it-cpu-int4.bin.tmp")
                 if (tempFile.exists()) tempFile.delete()
 
                 val client = OkHttpClient()

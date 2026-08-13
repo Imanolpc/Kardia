@@ -103,7 +103,7 @@ fun ModelDownloadLayout(
     state: GeneratorState.ModelNotDownloaded,
     onDownloadClick: (String) -> Unit
 ) {
-    val modelUrl = "https://github.com/Imanolpc/Kardia/releases/download/v1.0.0/gemma-3-1b-it-q4.task"
+    val modelUrl = "https://github.com/Imanolpc/Kardia/releases/download/v1.0.0/gemma-2b-it-cpu-int4.bin"
 
     Column(
         modifier = Modifier

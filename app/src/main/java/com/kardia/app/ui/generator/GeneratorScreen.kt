@@ -40,8 +40,9 @@ fun GeneratorScreen(
     ) {
         AnimatedContent(
             targetState = uiState,
+            contentKey = { state -> state::class },
             transitionSpec = {
-                fadeIn() with fadeOut()
+                fadeIn() togetherWith fadeOut()
             },
             label = "StateTransition"
         ) { state ->

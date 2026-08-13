@@ -12,6 +12,11 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Description
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,6 +63,9 @@ fun GeneratorScreen(
                         state = state,
                         onGenerateClick = { notes, deckName ->
                             viewModel.generateFlashcards(notes, deckName)
+                        },
+                        onDocumentSelected = { uri, onExtracted ->
+                            viewModel.extractTextFromDocument(uri, onExtracted)
                         }
                     )
                 }
@@ -240,7 +248,8 @@ fun ModelDownloadLayout(
 @Composable
 fun IdleGeneratorLayout(
     state: GeneratorState.Idle,
-    onGenerateClick: (String, String) -> Unit
+    onGenerateClick: (String, String) -> Unit,
+    onDocumentSelected: (Uri, (String) -> Unit) -> Unit
 ) {
     var notesText by remember { mutableStateOf(state.notesInput) }
     var deckName by remember { mutableStateOf(state.deckName) }
@@ -296,11 +305,60 @@ fun IdleGeneratorLayout(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            var isParsing by remember { mutableStateOf(false) }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Apuntes / Material de estudio",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                val fileLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri: Uri? ->
+                    uri?.let {
+                        isParsing = true
+                        onDocumentSelected(it) { extractedText ->
+                            notesText = extractedText
+                            isParsing = false
+                        }
+                    }
+                }
+
+                TextButton(
+                    onClick = { fileLauncher.launch(arrayOf("application/pdf", "text/plain")) },
+                    enabled = !isParsing
+                ) {
+                    if (isParsing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Leyendo...", style = MaterialTheme.typography.labelSmall)
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Description,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Cargar PDF / TXT", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             OutlinedTextField(
                 value = notesText,
                 onValueChange = { notesText = it },
-                label = { Text("Apuntes / Textos para Tarjetas") },
-                placeholder = { Text("Pega aquí apuntes médicos, fórmulas, historia, o cualquier texto del cual desees generar tarjetas de repetición espaciada...") },
+                placeholder = { Text("Pega aquí tus apuntes (o carga un archivo PDF/TXT usando el botón superior) para generar tarjetas de repetición espaciada...") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(260.dp),

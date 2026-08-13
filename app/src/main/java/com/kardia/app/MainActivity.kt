@@ -11,10 +11,12 @@ import androidx.compose.ui.Modifier
 import com.kardia.app.ui.generator.GeneratorScreen
 import com.kardia.app.ui.generator.GeneratorViewModel
 import com.kardia.app.ui.theme.KardiaTheme
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PDFBoxResourceLoader.init(applicationContext)
         setContent {
             KardiaTheme {
                 // Un contenedor de superficie que utiliza el color 'background' del tema

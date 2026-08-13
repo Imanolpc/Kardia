@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import android.net.Uri
+import com.kardia.app.core.util.DocumentParser
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
@@ -90,8 +93,20 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                             isDownloading = false
                         )
                     }
-                }
             }
+        }
+    }
+}
+
+    /**
+     * Extrae de forma asíncrona en IO el texto de un PDF o TXT.
+     */
+    fun extractTextFromDocument(uri: Uri, onTextExtracted: (String) -> Unit) {
+        viewModelScope.launch {
+            val text = withContext(Dispatchers.IO) {
+                DocumentParser.extractTextFromUri(getApplication(), uri)
+            }
+            onTextExtracted(text)
         }
     }
 

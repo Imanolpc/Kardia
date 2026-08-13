@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import android.net.Uri
 import com.kardia.app.core.util.DocumentParser
 import kotlinx.coroutines.withContext
+import android.util.Log
 import java.io.File
 import java.util.UUID
 
@@ -122,11 +123,12 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.value = GeneratorState.Generating(0.15f, "Preparando el motor de IA...")
 
         viewModelScope.launch(Dispatchers.Default) {
-            // Estructuramos el prompt para forzar un formato analizable en el SLM
+            // Estructuramos el prompt con el template oficial de chat de Gemma
             val prompt = """
+                <start_of_turn>user
                 Eres un asistente de estudio experto. Analiza el siguiente texto y genera entre 3 y 6 tarjetas de estudio (flashcards) claras y concisas en español.
                 Cada tarjeta consta de un anverso (pregunta o concepto) y un reverso (explicación o respuesta).
-                Debes responder STRICTLY con el formato que se muestra a continuación, sin introducir otros textos ni explicaciones:
+                Debes responder STRICTLY con el formato que se muestra a continuación, sin introducir otros textos ni explicaciones adicionales:
 
                 Q: ¿Cuál es el concepto o pregunta?
                 A: Explicación directa y resumida.
@@ -136,7 +138,8 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                 ---
 
                 Texto a procesar:
-                $notes
+                $notes<end_of_turn>
+                <start_of_turn>model
             """.trimIndent()
 
             var fullResponse = ""
@@ -152,6 +155,7 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                     is LocalLLMManager.InferenceStatus.Token -> {
                         fullResponse += status.text
+                        Log.d("KardiaAI", "Token: '${status.text}'")
                         // Simular progreso incremental durante la inferencia para mejorar la UX
                         if (cardWritingProgress < 0.80f) {
                             cardWritingProgress += 0.005f
@@ -163,12 +167,14 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                         )
                     }
                     is LocalLLMManager.InferenceStatus.Completed -> {
+                        Log.d("KardiaAI", "Completo. Respuesta de Gemma:\n$fullResponse")
                         _uiState.value = GeneratorState.Generating(
                             progress = 0.85f,
                             subtaskDescription = "Finalizando inferencia y analizando resultados..."
                         )
                         delay(400) // Transición visual suave
                         val drafts = parseFlashcards(fullResponse)
+                        Log.d("KardiaAI", "Tarjetas parseadas: ${drafts.size}")
                         if (drafts.isEmpty()) {
                             // En caso de que el modelo haya alucinado y no coincida con el formato Q/A
                             _uiState.value = GeneratorState.Error(
@@ -182,6 +188,7 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                     }
                     is LocalLLMManager.InferenceStatus.Error -> {
+                        Log.e("KardiaAI", "Error de inferencia", status.exception)
                         _uiState.value = GeneratorState.Error("Error en inferencia local: ${status.exception.message}")
                     }
                 }
@@ -294,7 +301,14 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
      */
     private fun parseFlashcards(text: String): List<DraftCard> {
         val list = mutableListOf<DraftCard>()
-        val blocks = text.split("---")
+        
+        // 1. Intentar buscar bloques delimitados por "---" o buscar dinámicamente Q: si olvidó separadores
+        val blocks = if (text.contains("---")) {
+            text.split("---")
+        } else {
+            // Dividir por cada vez que empieza una "Q:"
+            text.split(Regex("(?=Q:)", RegexOption.IGNORE_CASE))
+        }
 
         for (block in blocks) {
             val lines = block.trim().lines()
@@ -303,12 +317,25 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
 
             for (line in lines) {
                 val trimmed = line.trim()
+                // Tolerar Q:, A:, Pregunta:, Respuesta:, **Q:**, **A:**
                 if (trimmed.startsWith("Q:", ignoreCase = true)) {
                     front = trimmed.substring(2).trim()
                 } else if (trimmed.startsWith("A:", ignoreCase = true)) {
                     back = trimmed.substring(2).trim()
+                } else if (trimmed.startsWith("Pregunta:", ignoreCase = true)) {
+                    front = trimmed.substring(9).trim()
+                } else if (trimmed.startsWith("Respuesta:", ignoreCase = true)) {
+                    back = trimmed.substring(10).trim()
+                } else if (trimmed.startsWith("**Q:**", ignoreCase = true)) {
+                    front = trimmed.substring(6).trim()
+                } else if (trimmed.startsWith("**A:**", ignoreCase = true)) {
+                    back = trimmed.substring(6).trim()
                 }
             }
+
+            // Sanitizar markdown bold sobrante
+            front = front.replace("**", "").trim()
+            back = back.replace("**", "").trim()
 
             if (front.isNotEmpty() && back.isNotEmpty()) {
                 list.add(
@@ -318,6 +345,30 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                         back = back
                     )
                 )
+            }
+        }
+
+        // 2. Fallback line-by-line pairing si lo anterior falla por bloques corruptos
+        if (list.isEmpty()) {
+            val lines = text.lines()
+            var currentQ = ""
+            for (line in lines) {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("Q:", ignoreCase = true) || trimmed.startsWith("Pregunta:", ignoreCase = true)) {
+                    val prefixLen = if (trimmed.startsWith("Q:", ignoreCase = true)) 2 else 9
+                    currentQ = trimmed.substring(prefixLen).replace("**", "").trim()
+                } else if ((trimmed.startsWith("A:", ignoreCase = true) || trimmed.startsWith("Respuesta:", ignoreCase = true)) && currentQ.isNotEmpty()) {
+                    val prefixLen = if (trimmed.startsWith("A:", ignoreCase = true)) 2 else 10
+                    val currentA = trimmed.substring(prefixLen).replace("**", "").trim()
+                    list.add(
+                        DraftCard(
+                            id = UUID.randomUUID().toString(),
+                            front = currentQ,
+                            back = currentA
+                        )
+                    )
+                    currentQ = ""
+                }
             }
         }
         return list

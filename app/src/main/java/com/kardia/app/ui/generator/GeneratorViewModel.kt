@@ -130,22 +130,24 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             // y arnés de pre-completado del primer token 'Q:' para forzar rigidez en el formato.
             val prompt = """
                 <start_of_turn>user
-                Eres un generador de tarjetas de estudio (flashcards) profesional para Anki. Tu objetivo es analizar el texto del usuario y generar entre 3 y 6 tarjetas de alta calidad en español.
-                Cada tarjeta consta de un anverso (Q: pregunta directa y específica sobre un dato atómico del texto) y un reverso (A: respuesta exacta y concisa).
+                Eres un generador de tarjetas de estudio (flashcards) profesional para Anki. Tu objetivo es analizar el texto proporcionado y generar entre 3 y 6 tarjetas de alta calidad en español.
+                Cada tarjeta consta de un anverso (Q: pregunta o frase con hueco) y un reverso (A: respuesta o concepto oculto).
 
-                Sigue estrictamente estas reglas de calidad:
-                1. **No repitas placeholders:** NUNCA uses preguntas genéricas como "¿Cuál es el concepto?" o "¿Cuál es otro concepto?". Formula preguntas específicas sobre la materia del texto.
-                2. **Información mínima:** Cada tarjeta debe preguntar por un ÚNICO hecho o concepto.
-                3. **Correspondencia total:** La respuesta (A) debe responder exactamente a la pregunta (Q).
-                4. **Cero texto extra:** NUNCA uses listas numeradas (1., 2.), viñetas (-) ni explicaciones. Responde únicamente con preguntas y respuestas.
+                Sigue estrictamente estas reglas de calidad y fidelidad:
+                1. **Fidelidad absoluta al texto (Cero alucinaciones):** Está TERMINANTEMENTE PROHIBIDO inventar hechos, conceptos o relaciones. Todo debe ser extraído estrictamente del texto provisto. No uses conocimientos externos.
+                2. **Variedad de tipos de tarjetas:** Genera una mezcla de:
+                   - **Preguntas directas:** Ej: Q: ¿Cómo se llama el proceso X? A: Proceso Y.
+                   - **Rellenar el texto (Texto con huecos):** Escribe una frase clave del texto y reemplaza una palabra importante por `_______`. Ej: Q: La capital de Francia es _______ A: París.
+                3. **Información mínima:** Cada tarjeta debe preguntar por un ÚNICO dato o concepto atómico.
+                4. **Cero texto extra:** NUNCA uses listas numeradas (1., 2.), viñetas (-) ni introducciones. Responde únicamente con preguntas y respuestas.
 
                 Ejemplo de formato:
                 Texto: "La fotosíntesis es el proceso de conversión de luz solar en energía química usando dióxido de carbono y agua."
                 Q: ¿Cómo se llama el proceso por el cual las plantas convierten luz solar en energía química?
                 A: La fotosíntesis.
                 ---
-                Q: ¿Qué dos componentes químicos absorben las plantas para realizar la fotosíntesis?
-                A: Dióxido de carbono (CO2) y agua.
+                Q: Las plantas realizan la fotosíntesis utilizando luz solar, dióxido de carbono y _______
+                A: Agua.
                 ---
 
                 Texto a procesar:

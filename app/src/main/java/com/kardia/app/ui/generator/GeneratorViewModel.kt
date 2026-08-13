@@ -121,65 +121,82 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         _uiState.value = GeneratorState.Generating(0.15f, "Preparando el motor de IA...")
+        generateFlashcardsInternal(notes, deckName, 0)
+    }
 
+    private fun generateFlashcardsInternal(notes: String, deckName: String, retryNum: Int) {
         viewModelScope.launch(Dispatchers.Default) {
-            // Estructuramos el prompt con el template oficial de chat de Gemma
+            // Estructuramos el prompt con el template oficial de chat de Gemma, ejemplo concreto
+            // y arnés de pre-completado del primer token 'Q:' para forzar rigidez en el formato.
             val prompt = """
                 <start_of_turn>user
-                Eres un asistente de estudio experto. Analiza el siguiente texto y genera entre 3 y 6 tarjetas de estudio (flashcards) claras y concisas en español.
-                Cada tarjeta consta de un anverso (pregunta o concepto) y un reverso (explicación o respuesta).
-                Debes responder STRICTLY con el formato que se muestra a continuación, sin introducir otros textos ni explicaciones adicionales:
+                Eres un generador de tarjetas de estudio (flashcards) profesional para Anki. Tu objetivo es analizar el texto del usuario y generar entre 3 y 6 tarjetas de alta calidad en español.
+                Cada tarjeta consta de un anverso (Q: pregunta directa y específica sobre un dato atómico del texto) y un reverso (A: respuesta exacta y concisa).
 
-                Q: ¿Cuál es el concepto o pregunta?
-                A: Explicación directa y resumida.
+                Sigue estrictamente estas reglas de calidad:
+                1. **No repitas placeholders:** NUNCA uses preguntas genéricas como "¿Cuál es el concepto?" o "¿Cuál es otro concepto?". Formula preguntas específicas sobre la materia del texto.
+                2. **Información mínima:** Cada tarjeta debe preguntar por un ÚNICO hecho o concepto.
+                3. **Correspondencia total:** La respuesta (A) debe responder exactamente a la pregunta (Q).
+                4. **Cero texto extra:** NUNCA uses listas numeradas (1., 2.), viñetas (-) ni explicaciones. Responde únicamente con preguntas y respuestas.
+
+                Ejemplo de formato:
+                Texto: "La fotosíntesis es el proceso de conversión de luz solar en energía química usando dióxido de carbono y agua."
+                Q: ¿Cómo se llama el proceso por el cual las plantas convierten luz solar en energía química?
+                A: La fotosíntesis.
                 ---
-                Q: ¿Cuál es otro concepto?
-                A: Otra explicación concisa.
+                Q: ¿Qué dos componentes químicos absorben las plantas para realizar la fotosíntesis?
+                A: Dióxido de carbono (CO2) y agua.
                 ---
 
                 Texto a procesar:
                 $notes<end_of_turn>
                 <start_of_turn>model
+                Q:
             """.trimIndent()
 
-            var fullResponse = ""
-            var cardWritingProgress = 0.20f
+            // Pre-cargamos el primer token 'Q:' en el acumulador para que coincida con el arnés
+            var fullResponse = "Q:"
+            var cardWritingProgress = 0.20f + (retryNum * 0.15f)
 
             llmManager.generateFlashcardsStream(prompt).collect { status ->
                 when (status) {
                     is LocalLLMManager.InferenceStatus.Starting -> {
                         _uiState.value = GeneratorState.Generating(
-                            progress = 0.20f,
-                            subtaskDescription = "Gemma-3 1B IT analizando texto..."
+                            progress = 0.20f + (retryNum * 0.15f),
+                            subtaskDescription = if (retryNum == 0) "Gemma-3 1B IT analizando texto..." else "Reintentando por formato (Intento ${retryNum + 1} de 3)..."
                         )
                     }
                     is LocalLLMManager.InferenceStatus.Token -> {
                         fullResponse += status.text
                         Log.d("KardiaAI", "Token: '${status.text}'")
-                        // Simular progreso incremental durante la inferencia para mejorar la UX
                         if (cardWritingProgress < 0.80f) {
                             cardWritingProgress += 0.005f
                         }
                         _uiState.value = GeneratorState.Generating(
                             progress = cardWritingProgress,
-                            subtaskDescription = "IA local redactando tarjetas de repetición...",
+                            subtaskDescription = "IA local redactando tarjetas...",
                             partialText = fullResponse
                         )
                     }
                     is LocalLLMManager.InferenceStatus.Completed -> {
-                        Log.d("KardiaAI", "Completo. Respuesta de Gemma:\n$fullResponse")
+                        Log.d("KardiaAI", "Inferencia completa (Intento ${retryNum + 1}). Respuesta:\n$fullResponse")
                         _uiState.value = GeneratorState.Generating(
                             progress = 0.85f,
-                            subtaskDescription = "Finalizando inferencia y analizando resultados..."
+                            subtaskDescription = "Analizando resultados generados..."
                         )
-                        delay(400) // Transición visual suave
+                        delay(300)
                         val drafts = parseFlashcards(fullResponse)
                         Log.d("KardiaAI", "Tarjetas parseadas: ${drafts.size}")
+
                         if (drafts.isEmpty()) {
-                            // En caso de que el modelo haya alucinado y no coincida con el formato Q/A
-                            _uiState.value = GeneratorState.Error(
-                                "La IA local no generó tarjetas compatibles con el formato esperado. Por favor, intenta de nuevo."
-                            )
+                            if (retryNum < 2) {
+                                Log.w("KardiaAI", "Intento ${retryNum + 1} fallido (formato vacío). Reintentando...")
+                                generateFlashcardsInternal(notes, deckName, retryNum + 1)
+                            } else {
+                                _uiState.value = GeneratorState.Error(
+                                    "La IA local no generó tarjetas compatibles tras 3 intentos. Por favor, simplifica tus apuntes e intenta nuevamente."
+                                )
+                            }
                         } else {
                             _uiState.value = GeneratorState.Drafting(
                                 deckName = deckName,
@@ -188,8 +205,13 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                     }
                     is LocalLLMManager.InferenceStatus.Error -> {
-                        Log.e("KardiaAI", "Error de inferencia", status.exception)
-                        _uiState.value = GeneratorState.Error("Error en inferencia local: ${status.exception.message}")
+                        Log.e("KardiaAI", "Error de inferencia (Intento ${retryNum + 1})", status.exception)
+                        if (retryNum < 2) {
+                            Log.w("KardiaAI", "Reintentando tras error técnico...")
+                            generateFlashcardsInternal(notes, deckName, retryNum + 1)
+                        } else {
+                            _uiState.value = GeneratorState.Error("Error en inferencia local: ${status.exception.message}")
+                        }
                     }
                 }
             }

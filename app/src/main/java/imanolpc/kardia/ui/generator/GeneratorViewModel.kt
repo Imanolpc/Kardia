@@ -163,23 +163,20 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
 
                 val prompt = """
                     <start_of_turn>user
-                    Eres un generador de flashcards en español. Lee este texto y genera EXACTAMENTE 2 tarjetas:
-                    1) Pregunta directa:
-                    Q: [pregunta directa]
-                    A: [respuesta de 1 a 3 palabras]
-                    ---
-                    2) Autocompletar:
-                    Q: [frase del texto sustituyendo la palabra clave por _______]
-                    A: [palabra clave de 1 a 3 palabras]
-                    ---
+                    Lee el siguiente texto y genera EXACTAMENTE 2 tarjetas de estudio breves sobre lo que dice el texto.
+                    
+                    REGLAS OBLIGATORIAS:
+                    1. No inventes nada. Usa exclusivamente los datos del texto.
+                    2. Tarjeta 1: Pregunta directa muy breve sobre el texto.
+                    3. Tarjeta 2: Frase del texto donde sustituyes una palabra clave por "_______".
+                    4. Respuestas (A): Deben ser cortas, de 1 a 3 palabras exactas del texto.
 
-                    Ejemplo:
-                    Texto: "En la dieta mediterránea se debe comer pollo todos los días."
-                    Q: ¿Qué se debe comer todos los días?
-                    A: Pollo.
+                    FORMATO DE SALIDA (sin explicaciones):
+                    Q: [Pregunta directa sobre el texto]
+                    A: [Respuesta de 1-3 palabras]
                     ---
-                    Q: En la dieta mediterránea se debe comer _______ todos los días.
-                    A: Pollo.
+                    Q: [Frase del texto con _______]
+                    A: [Palabra oculta de 1-3 palabras]
                     ---
 
                     TEXTO:
@@ -358,6 +355,14 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             front = front.replace("**", "").trim()
             back = back.replace("**", "").trim()
 
+            // Descartar placeholders y respuestas que copien ejemplos
+            if (front.contains("[Pregunta") || front.contains("[Frase") || back.contains("[Respuesta") || back.contains("[Palabra")) {
+                continue
+            }
+            if ((front.contains("pollo", ignoreCase = true) || back.contains("pollo", ignoreCase = true)) && !sourceParagraph.contains("pollo", ignoreCase = true)) {
+                continue
+            }
+
             if (front.isNotEmpty() && back.isNotEmpty()) {
                 list.add(
                     DraftCard(
@@ -382,14 +387,16 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                 } else if ((trimmed.startsWith("A:", ignoreCase = true) || trimmed.startsWith("Respuesta:", ignoreCase = true)) && currentQ.isNotEmpty()) {
                     val prefixLen = if (trimmed.startsWith("A:", ignoreCase = true)) 2 else 10
                     val currentA = trimmed.substring(prefixLen).replace("**", "").trim()
-                    list.add(
-                        DraftCard(
-                            id = UUID.randomUUID().toString(),
-                            front = currentQ,
-                            back = currentA,
-                            sourceText = sourceParagraph
+                    if (!currentQ.contains("[Pregunta") && !currentA.contains("[Respuesta")) {
+                        list.add(
+                            DraftCard(
+                                id = UUID.randomUUID().toString(),
+                                front = currentQ,
+                                back = currentA,
+                                sourceText = sourceParagraph
+                            )
                         )
-                    )
+                    }
                     currentQ = ""
                 }
             }

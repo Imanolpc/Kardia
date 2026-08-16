@@ -48,6 +48,13 @@ fun MainAppNavigation(
 
     val selectedDeckWithCards by libraryViewModel.selectedDeck.collectAsState()
 
+    val availableModels by generatorViewModel.availableModels.collectAsState()
+    val selectedModel by generatorViewModel.selectedModel.collectAsState()
+    val downloadingModelId by generatorViewModel.downloadingModelId.collectAsState()
+    val downloadProgress by generatorViewModel.downloadProgress.collectAsState()
+    val downloadMessage by generatorViewModel.downloadMessage.collectAsState()
+    val isSettingsOpen by generatorViewModel.isSettingsOpen.collectAsState()
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -98,6 +105,7 @@ fun MainAppNavigation(
                             MainTab.LIBRARY -> {
                                 LibraryScreen(
                                     viewModel = libraryViewModel,
+                                    onOpenSettings = { generatorViewModel.openSettings() },
                                     onOpenDeckDetails = { deckId ->
                                         libraryViewModel.selectDeck(deckId)
                                         currentDestination = NavDestination.DeckDetail(deckId)
@@ -159,6 +167,24 @@ fun MainAppNavigation(
                     }
                 )
             }
+        }
+
+        // Diálogo global de configuración de modelos
+        if (isSettingsOpen) {
+            imanolpc.kardia.ui.settings.ModelSettingsDialog(
+                models = availableModels,
+                selectedModel = selectedModel,
+                downloadingModelId = downloadingModelId,
+                downloadProgress = downloadProgress,
+                downloadMessage = downloadMessage,
+                isModelDownloaded = { model -> generatorViewModel.llmManager.isModelDownloaded(model) },
+                onSelectModel = { model -> generatorViewModel.selectModel(model) },
+                onDownloadModel = { model -> generatorViewModel.downloadModel(model) },
+                onDeleteModel = { model -> generatorViewModel.deleteModel(model) },
+                onImportLocalFile = { uri, name -> generatorViewModel.importLocalModel(uri, name) },
+                onRefreshCatalog = { generatorViewModel.loadCatalogAndCheckModel() },
+                onDismissRequest = { generatorViewModel.closeSettings() }
+            )
         }
     }
 }

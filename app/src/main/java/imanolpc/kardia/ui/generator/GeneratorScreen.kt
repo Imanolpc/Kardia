@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Clear
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
@@ -362,7 +363,18 @@ fun IdleGeneratorLayout(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(260.dp),
-                maxLines = 15
+                maxLines = 15,
+                trailingIcon = {
+                    if (notesText.isNotEmpty()) {
+                        IconButton(onClick = { notesText = "" }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Limpiar texto",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             )
 
             state.errorMessage?.let { error ->

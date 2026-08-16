@@ -130,31 +130,43 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             // y arnés de pre-completado del primer token 'Q:' para forzar rigidez en el formato.
             val prompt = """
                 <start_of_turn>user
-                Eres un generador de tarjetas de estudio (flashcards) profesional para Anki. Tu objetivo es analizar el texto proporcionado y generar OBLIGATORIAMENTE entre 3 y 6 tarjetas de alta calidad en español.
-                Cada tarjeta consta de un anverso (Q: pregunta o frase con hueco), un reverso (A: respuesta o concepto oculto) y el párrafo de origen (S: el párrafo exacto y literal del texto del cual se ha extraído la información).
+                Eres un motor de extracción factual estricto en español para tarjetas de estudio Anki.
+                Tu tarea es leer el TEXTO y generar EXACTAMENTE 3 tarjetas de estudio basándote ÚNICAMENTE en la información literal provista.
 
-                Sigue estrictamente estas reglas de calidad y formato:
-                1. **Fidelidad absoluta al texto (Cero alucinaciones):** Está TERMINANTEMENTE PROHIBIDO inventar hechos, conceptos o relaciones. Todo debe ser extraído estrictamente del texto provisto. No uses conocimientos externos.
-                2. **Longitud de Preguntas y Respuestas:** Las preguntas (Q) deben ser claras, detalladas y dar suficiente contexto (pueden ser largas). Las respuestas (A) deben ser extremadamente cortas y concisas (1 a 5 palabras, máximo una frase muy breve).
-                3. **Variedad de tipos de tarjetas:** Genera una mezcla de:
-                   - **Preguntas directas:** Ej: Q: ¿Cómo se llama el proceso X? A: Proceso Y.
-                   - **Rellenar el texto (Texto con huecos):** Escribe una frase clave del texto y reemplaza una palabra importante por `_______`. Ej: Q: La capital de Francia es _______ A: París.
-                   *ATENCIÓN:* Al menos una de las tarjetas generadas debe ser obligatoriamente del tipo "Rellenar el texto" (con hueco `_______`).
-                4. **Párrafo de Origen (S):** Para cada tarjeta, debes añadir la línea "S: [párrafo exacto del texto original]".
-                5. **Cero texto extra:** NUNCA uses listas numeradas (1., 2.), viñetas (-) ni introducciones. Responde únicamente con preguntas, respuestas y párrafo de origen en el formato Q/A/S.
+                REGLAS CRÍTICAS DE FIDELIDAD Y FORMATO:
+                1. 100% FIEL AL TEXTO: Está terminantemente prohibido inventar, asumir o usar conocimientos externos. Si un dato no está mencionado explícitamente en el TEXTO, no existirá ninguna tarjeta sobre él.
+                2. RESPUESTAS CORTAS: El campo "A:" (respuesta) debe contener entre 1 y 4 palabras como máximo. Las preguntas "Q:" pueden ser largas y detalladas para dar contexto.
+                3. ESTRUCTURA DE 3 TARJETAS:
+                   - Tarjeta 1: Pregunta directa sobre el texto. Formato:
+                     Q: [Pregunta]
+                     A: [Respuesta de 1-4 palabras]
+                     S: [Cita literal del párrafo exacto de origen]
+                   - Tarjeta 2: Pregunta directa sobre el texto. Formato:
+                     Q: [Pregunta]
+                     A: [Respuesta de 1-4 palabras]
+                     S: [Cita literal del párrafo exacto de origen]
+                   - Tarjeta 3: Rellenar el hueco (frase incompleta del texto con "_______"). Formato:
+                     Q: [Frase con _______ en lugar del concepto clave]
+                     A: [Concepto clave de 1-4 palabras]
+                     S: [Cita literal del párrafo exacto de origen]
+                4. FORMATO DE SALIDA SECO: Responde únicamente con los bloques separados por "---". No incluyas explicaciones, viñetas ni enumeraciones de las tarjetas.
 
                 Ejemplo de formato:
                 Texto: "La fotosíntesis es el proceso de conversión de luz solar en energía química usando dióxido de carbono y agua."
-                Q: ¿Cómo se llama el proceso biológico por el cual las plantas convierten la luz del sol en energía química?
-                A: La fotosíntesis.
+                Q: ¿Qué tipo de conversión realiza la fotosíntesis con la luz solar?
+                A: Energía química.
                 S: La fotosíntesis es el proceso de conversión de luz solar en energía química usando dióxido de carbono y agua.
                 ---
-                Q: Las plantas realizan la fotosíntesis utilizando luz solar, dióxido de carbono y _______
+                Q: ¿Qué compuestos se utilizan junto con la luz solar en la fotosíntesis?
+                A: Dióxido de carbono y agua.
+                S: La fotosíntesis es el proceso de conversión de luz solar en energía química usando dióxido de carbono y agua.
+                ---
+                Q: La fotosíntesis convierte la luz solar en energía química usando dióxido de carbono y _______
                 A: Agua.
                 S: La fotosíntesis es el proceso de conversión de luz solar en energía química usando dióxido de carbono y agua.
                 ---
 
-                Texto a procesar:
+                TEXTO A PROCESAR:
                 $notes<end_of_turn>
                 <start_of_turn>model
                 Q:

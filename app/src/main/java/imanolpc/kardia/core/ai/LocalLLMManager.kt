@@ -113,7 +113,6 @@ class LocalLLMManager(private val context: Context) {
             // Liberar instancia previa si existe
             llmInference?.close()
 
-            // Configurar LiteRT-LM según especificaciones técnicas de 2026
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
                 .setMaxTopK(40)         // topK = 40

@@ -163,21 +163,16 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
 
                 val prompt = """
                     <start_of_turn>user
-                    Lee el siguiente texto y genera EXACTAMENTE 2 tarjetas de estudio breves sobre lo que dice el texto.
+                    Lee este texto y extrae 1 pregunta directa de estudio con su respuesta corta (1 a 4 palabras).
                     
-                    REGLAS OBLIGATORIAS:
-                    1. No inventes nada. Usa exclusivamente los datos del texto.
-                    2. Tarjeta 1: Pregunta directa muy breve sobre el texto.
-                    3. Tarjeta 2: Frase del texto donde sustituyes una palabra clave por "_______".
-                    4. Respuestas (A): Deben ser cortas, de 1 a 3 palabras exactas del texto.
+                    REGLAS:
+                    - La respuesta "A:" DEBE ser solo 1 a 4 palabras (el dato o concepto clave).
+                    - PROHIBIDO escribir frases completas en "A:".
+                    - Basado únicamente en el texto.
 
-                    FORMATO DE SALIDA (sin explicaciones):
-                    Q: [Pregunta directa sobre el texto]
-                    A: [Respuesta de 1-3 palabras]
-                    ---
-                    Q: [Frase del texto con _______]
-                    A: [Palabra oculta de 1-3 palabras]
-                    ---
+                    FORMATO DE SALIDA:
+                    Q: [Pregunta directa y concisa]
+                    A: [1 a 4 palabras clave]
 
                     TEXTO:
                     $chunk<end_of_turn>
@@ -322,6 +317,34 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
     /**
      * Parsea la respuesta en texto plano estructurado del modelo en una lista de DraftCards.
      */
+    private fun cleanAnswer(answer: String): String {
+        var clean = answer.trim()
+        val prefixes = listOf(
+            Regex("^El\\s+[A-Za-z0-9_áéíóúÁÉÍÓÚñÑ]+\\s+es\\s+", RegexOption.IGNORE_CASE),
+            Regex("^La\\s+[A-Za-z0-9_áéíóúÁÉÍÓÚñÑ]+\\s+es\\s+", RegexOption.IGNORE_CASE),
+            Regex("^Los\\s+[A-Za-z0-9_áéíóúÁÉÍÓÚñÑ]+\\s+son\\s+", RegexOption.IGNORE_CASE),
+            Regex("^Las\\s+[A-Za-z0-9_áéíóúÁÉÍÓÚñÑ]+\\s+son\\s+", RegexOption.IGNORE_CASE),
+            Regex("^Se\\s+puede\\s+[A-Za-z0-9_áéíóúÁÉÍÓÚñÑ]+\\s+", RegexOption.IGNORE_CASE),
+            Regex("^Es\\s+un\\s+", RegexOption.IGNORE_CASE),
+            Regex("^Es\\s+una\\s+", RegexOption.IGNORE_CASE)
+        )
+        for (prefix in prefixes) {
+            clean = clean.replace(prefix, "")
+        }
+        
+        val words = clean.split(Regex("\\s+"))
+        if (words.size > 5) {
+            val firstComma = clean.indexOf(',')
+            if (firstComma in 3..35) {
+                clean = clean.substring(0, firstComma).trim()
+            } else {
+                clean = words.take(4).joinToString(" ")
+            }
+        }
+        
+        return clean.trim().removeSuffix(".")
+    }
+
     private fun parseFlashcardsForChunk(text: String, sourceParagraph: String): List<DraftCard> {
         val list = mutableListOf<DraftCard>()
         val blocks = if (text.contains("---")) {
@@ -353,13 +376,10 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             }
 
             front = front.replace("**", "").trim()
-            back = back.replace("**", "").trim()
+            back = cleanAnswer(back.replace("**", "").trim())
 
-            // Descartar placeholders y respuestas que copien ejemplos
-            if (front.contains("[Pregunta") || front.contains("[Frase") || back.contains("[Respuesta") || back.contains("[Palabra")) {
-                continue
-            }
-            if ((front.contains("pollo", ignoreCase = true) || back.contains("pollo", ignoreCase = true)) && !sourceParagraph.contains("pollo", ignoreCase = true)) {
+            // Descartar placeholders
+            if (front.contains("[Pregunta") || front.contains("[Frase") || back.contains("[Respuesta") || back.contains("[Dato")) {
                 continue
             }
 
@@ -375,7 +395,7 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
 
-        // Fallback line-by-line pairing
+        // Fallback line-by-line pairing si los bloques fallaron
         if (list.isEmpty()) {
             val lines = text.lines()
             var currentQ = ""
@@ -386,8 +406,8 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                     currentQ = trimmed.substring(prefixLen).replace("**", "").trim()
                 } else if ((trimmed.startsWith("A:", ignoreCase = true) || trimmed.startsWith("Respuesta:", ignoreCase = true)) && currentQ.isNotEmpty()) {
                     val prefixLen = if (trimmed.startsWith("A:", ignoreCase = true)) 2 else 10
-                    val currentA = trimmed.substring(prefixLen).replace("**", "").trim()
-                    if (!currentQ.contains("[Pregunta") && !currentA.contains("[Respuesta")) {
+                    val currentA = cleanAnswer(trimmed.substring(prefixLen).replace("**", "").trim())
+                    if (!currentQ.contains("[Pregunta") && !currentA.contains("[Respuesta") && currentA.isNotEmpty()) {
                         list.add(
                             DraftCard(
                                 id = UUID.randomUUID().toString(),
@@ -402,27 +422,44 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
 
-        // Garantía de tarjeta de autocompletar: si no hay ninguna, creamos una a partir del párrafo de origen
-        val hasCloze = list.any { it.front.contains("_______") }
-        if (!hasCloze && list.isNotEmpty()) {
-            val card = list.last()
-            val cleanWord = card.back.trim().removeSuffix(".")
-            if (cleanWord.isNotEmpty()) {
-                if (sourceParagraph.contains(cleanWord, ignoreCase = true)) {
-                    val cloze = sourceParagraph.replace(
-                        Regex(Regex.escape(cleanWord), RegexOption.IGNORE_CASE),
+        // Generar SIEMPRE una tarjeta de autocompletar (Cloze) extraída literalmente del texto
+        val sentences = sourceParagraph.split(Regex("(?<=[.!?])\\s+")).filter { it.trim().length > 15 }
+        var clozeFront = ""
+        var clozeBack = ""
+
+        if (list.isNotEmpty()) {
+            val answerKey = list.first().back
+            for (sentence in sentences) {
+                if (sentence.contains(answerKey, ignoreCase = true)) {
+                    clozeFront = sentence.replace(
+                        Regex(Regex.escape(answerKey), RegexOption.IGNORE_CASE),
                         "_______"
                     )
-                    list.add(
-                        DraftCard(
-                            id = UUID.randomUUID().toString(),
-                            front = cloze,
-                            back = cleanWord,
-                            sourceText = sourceParagraph
-                        )
-                    )
+                    clozeBack = answerKey
+                    break
                 }
             }
+        }
+
+        if (clozeFront.isEmpty() && sentences.isNotEmpty()) {
+            val targetSentence = sentences.first().trim()
+            val words = targetSentence.split(" ").filter { it.length > 4 && !it.startsWith("http") }
+            if (words.isNotEmpty()) {
+                val chosenWord = words.last().trim().removeSuffix(".").removeSuffix(",")
+                clozeFront = targetSentence.replace(chosenWord, "_______")
+                clozeBack = chosenWord
+            }
+        }
+
+        if (clozeFront.isNotEmpty() && clozeBack.isNotEmpty()) {
+            list.add(
+                DraftCard(
+                    id = UUID.randomUUID().toString(),
+                    front = clozeFront,
+                    back = clozeBack,
+                    sourceText = sourceParagraph
+                )
+            )
         }
 
         return list

@@ -87,6 +87,9 @@ fun GeneratorScreen(
                         deckName = state.deckName,
                         drafts = state.drafts,
                         isAnkiDroidAvailable = isAnkiDroidAvailable,
+                        onSaveToKardia = { finalDrafts ->
+                            viewModel.saveToKardia(state.deckName, finalDrafts)
+                        },
                         onSaveToCollection = { finalDrafts ->
                             viewModel.exportToApkg(state.deckName, finalDrafts)
                         },

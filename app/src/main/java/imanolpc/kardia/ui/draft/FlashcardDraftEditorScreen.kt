@@ -3,10 +3,12 @@ package imanolpc.kardia.ui.draft
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.BookmarkAdded
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
@@ -23,15 +25,14 @@ fun FlashcardDraftEditorScreen(
     deckName: String,
     drafts: List<DraftCard>,
     isAnkiDroidAvailable: Boolean,
+    onSaveToKardia: (List<DraftCard>) -> Unit,
     onSaveToCollection: (List<DraftCard>) -> Unit,
     onImportToAnkiDroid: (List<DraftCard>) -> Unit,
     onBack: () -> Unit
 ) {
-    // Mantener estado mutable local para la edición
     var editableDrafts by remember { mutableStateOf(drafts) }
     var activeInfoCardIndex by remember { mutableStateOf<Int?>(null) }
 
-    // Diálogo informativo del párrafo de origen
     activeInfoCardIndex?.let { index ->
         val card = editableDrafts.getOrNull(index)
         if (card != null && card.sourceText.isNotEmpty()) {
@@ -56,7 +57,7 @@ fun FlashcardDraftEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Borrador de IA: $deckName") },
+                title = { Text("Borrador: $deckName") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
@@ -74,25 +75,25 @@ fun FlashcardDraftEditorScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            // Cabecera instructiva de calidad contra alucinaciones
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 ),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp)
+                    .padding(vertical = 6.dp)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        text = "Filtro de Control de Calidad",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = "Filtro de Control de Calidad (${editableDrafts.size} tarjetas)",
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Las IAs locales pueden alucinar u omitir detalles. Modifica o elimina cualquier campo antes de exportar permanentemente el mazo.",
+                        text = "Revisa y ajusta cualquier tarjeta antes de guardarla en tu biblioteca.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -103,12 +104,13 @@ fun FlashcardDraftEditorScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(vertical = 8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(vertical = 6.dp)
             ) {
                 itemsIndexed(editableDrafts) { index, card ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surface
                         ),
@@ -132,7 +134,7 @@ fun FlashcardDraftEditorScreen(
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     if (card.sourceText.isNotEmpty()) {
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         IconButton(
                                             onClick = { activeInfoCardIndex = index },
                                             modifier = Modifier.size(24.dp)
@@ -141,7 +143,7 @@ fun FlashcardDraftEditorScreen(
                                                 imageVector = Icons.Default.Info,
                                                 contentDescription = "Ver párrafo original",
                                                 tint = MaterialTheme.colorScheme.secondary,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(16.dp)
                                             )
                                         }
                                     }
@@ -151,16 +153,20 @@ fun FlashcardDraftEditorScreen(
                                         editableDrafts = editableDrafts.toMutableList().apply {
                                             removeAt(index)
                                         }
-                                    }
+                                    },
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
                                         contentDescription = "Eliminar Tarjeta",
-                                        tint = MaterialTheme.colorScheme.error
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
                             
+                            Spacer(modifier = Modifier.height(4.dp))
+
                             OutlinedTextField(
                                 value = card.front,
                                 onValueChange = { newFront ->
@@ -168,12 +174,13 @@ fun FlashcardDraftEditorScreen(
                                         this[index] = card.copy(front = newFront)
                                     }
                                 },
-                                label = { Text("Anverso (Pregunta / Concepto)") },
+                                label = { Text("Anverso (Pregunta)") },
                                 modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
                                 maxLines = 4
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
 
                             OutlinedTextField(
                                 value = card.back,
@@ -182,8 +189,9 @@ fun FlashcardDraftEditorScreen(
                                         this[index] = card.copy(back = newBack)
                                     }
                                 },
-                                label = { Text("Reverso (Respuesta / Definición)") },
+                                label = { Text("Reverso (Respuesta)") },
                                 modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
                                 maxLines = 6
                             )
                         }
@@ -191,7 +199,7 @@ fun FlashcardDraftEditorScreen(
                 }
             }
 
-            // Barra inferior con acciones de exportación nativas
+            // Acciones: Guardar en Kardia (Principal) + Opciones de Anki
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 tonalElevation = 8.dp
@@ -199,32 +207,50 @@ fun FlashcardDraftEditorScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 12.dp),
+                        .padding(vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (isAnkiDroidAvailable) {
-                        Button(
-                            onClick = { onImportToAnkiDroid(editableDrafts) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            enabled = editableDrafts.isNotEmpty()
-                        ) {
-                            Icon(Icons.Default.SystemUpdateAlt, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Inyectar en AnkiDroid (ContentProvider)")
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = { onSaveToCollection(editableDrafts) },
-                        modifier = Modifier.fillMaxWidth(),
+                    // BOTÓN PRINCIPAL: Guardar en Kardia
+                    Button(
+                        onClick = { onSaveToKardia(editableDrafts) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
                         enabled = editableDrafts.isNotEmpty()
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null)
+                        Icon(Icons.Default.BookmarkAdded, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Exportar como archivo .apkg (Offline)")
+                        Text("Guardar en Biblioteca Kardia", fontWeight = FontWeight.Bold)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { onSaveToCollection(editableDrafts) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            enabled = editableDrafts.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Exportar .apkg", maxLines = 1)
+                        }
+
+                        if (isAnkiDroidAvailable) {
+                            OutlinedButton(
+                                onClick = { onImportToAnkiDroid(editableDrafts) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                enabled = editableDrafts.isNotEmpty()
+                            ) {
+                                Icon(Icons.Default.SystemUpdateAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("AnkiDroid", maxLines = 1)
+                            }
+                        }
                     }
                 }
             }

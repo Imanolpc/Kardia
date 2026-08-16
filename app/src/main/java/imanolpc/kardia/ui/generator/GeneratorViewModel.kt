@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import imanolpc.kardia.core.database.DeckRepository
 import java.io.File
 import java.util.UUID
 
@@ -25,6 +26,7 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
 
     val llmManager = LocalLLMManager(application)
     val catalogRepository = ModelCatalogRepository(application)
+    val deckRepository = DeckRepository(application)
     private val compiler = AnkiApkgCompiler(application)
     private val connector = AnkiDroidConnector(application)
 
@@ -378,6 +380,30 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
                 removeAt(index)
             }
             _uiState.value = currentState.copy(drafts = updatedList)
+        }
+    }
+
+    /**
+     * Guarda el mazo y las tarjetas directamente en la base de datos local de Kardia (Room).
+     */
+    fun saveToKardia(deckName: String, drafts: List<DraftCard>) {
+        if (drafts.isEmpty()) {
+            _uiState.value = GeneratorState.Error("No hay tarjetas para guardar.")
+            return
+        }
+
+        _uiState.value = GeneratorState.Generating(0.90f, "Guardando en la biblioteca de Kardia...")
+
+        viewModelScope.launch {
+            try {
+                deckRepository.saveDeckWithDraftCards(deckName, drafts)
+                _uiState.value = GeneratorState.Success(
+                    message = "¡Mazo guardado en Kardia!",
+                    detail = "Se han guardado ${drafts.size} tarjetas en tu biblioteca local. Puedes repasarlas en cualquier momento desde 'Mis Mazos'."
+                )
+            } catch (e: Exception) {
+                _uiState.value = GeneratorState.Error("Error al guardar en la base de datos: ${e.message}")
+            }
         }
     }
 

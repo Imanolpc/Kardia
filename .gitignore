@@ -23,3 +23,8 @@ local.properties
 *.hprof
 screenshot.png
 
+# Signing secrets
+*.jks
+*.keystore
+keystore.properties
+

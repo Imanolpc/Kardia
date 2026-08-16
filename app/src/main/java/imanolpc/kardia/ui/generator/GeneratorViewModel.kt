@@ -1,103 +1,210 @@
 package imanolpc.kardia.ui.generator
 
 import android.app.Application
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableStateOf
+import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import imanolpc.kardia.core.ai.AIModelInfo
 import imanolpc.kardia.core.ai.LocalLLMManager
+import imanolpc.kardia.core.ai.ModelCatalogRepository
 import imanolpc.kardia.core.anki.AnkiApkgCompiler
 import imanolpc.kardia.core.anki.AnkiDroidConnector
 import imanolpc.kardia.core.anki.DraftCard
+import imanolpc.kardia.core.util.DocumentParser
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import android.net.Uri
-import imanolpc.kardia.core.util.DocumentParser
 import kotlinx.coroutines.withContext
-import android.util.Log
 import java.io.File
 import java.util.UUID
 
 class GeneratorViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val llmManager = LocalLLMManager(application)
+    val llmManager = LocalLLMManager(application)
+    val catalogRepository = ModelCatalogRepository(application)
     private val compiler = AnkiApkgCompiler(application)
     private val connector = AnkiDroidConnector(application)
 
     private val _uiState = MutableStateFlow<GeneratorState>(GeneratorState.ModelNotDownloaded())
     val uiState: StateFlow<GeneratorState> = _uiState.asStateFlow()
 
+    // Model settings state
+    private val _availableModels = MutableStateFlow<List<AIModelInfo>>(AIModelInfo.DEFAULT_CATALOG)
+    val availableModels: StateFlow<List<AIModelInfo>> = _availableModels.asStateFlow()
+
+    private val _selectedModel = MutableStateFlow<AIModelInfo?>(AIModelInfo.DEFAULT_CATALOG.first())
+    val selectedModel: StateFlow<AIModelInfo?> = _selectedModel.asStateFlow()
+
+    private val _downloadingModelId = MutableStateFlow<String?>(null)
+    val downloadingModelId: StateFlow<String?> = _downloadingModelId.asStateFlow()
+
+    private val _downloadProgress = MutableStateFlow(0f)
+    val downloadProgress: StateFlow<Float> = _downloadProgress.asStateFlow()
+
+    private val _downloadMessage = MutableStateFlow<String?>("")
+    val downloadMessage: StateFlow<String?> = _downloadMessage.asStateFlow()
+
+    private val _isSettingsOpen = MutableStateFlow(false)
+    val isSettingsOpen: StateFlow<Boolean> = _isSettingsOpen.asStateFlow()
+
     init {
-        checkModelPresence()
+        loadCatalogAndCheckModel()
     }
 
     /**
-     * Verifica si el modelo está disponible localmente para determinar el estado de arranque.
+     * Carga el catálogo de modelos remotos/locales y establece el estado inicial.
+     * Cero impacto en RAM porque no se carga el modelo hasta que se solicita generar.
      */
-    fun checkModelPresence() {
+    fun loadCatalogAndCheckModel() {
         viewModelScope.launch {
-            if (llmManager.isModelDownloaded()) {
-                _uiState.value = GeneratorState.Generating(0.1f, "Inicializando motor de inferencia local...")
-                val initResult = llmManager.initializeModel()
-                if (initResult.isSuccess) {
-                    _uiState.value = GeneratorState.Idle()
-                } else {
-                    _uiState.value = GeneratorState.ModelNotDownloaded(
-                        errorMessage = "Error de inicialización: ${initResult.exceptionOrNull()?.message}"
-                    )
-                }
+            val models = catalogRepository.getAvailableModels(llmManager.modelDirectory)
+            _availableModels.value = models
+
+            val selectedId = catalogRepository.getSelectedModelId()
+            val currentSelected = models.find { it.id == selectedId } 
+                ?: models.find { llmManager.isModelDownloaded(it) } 
+                ?: models.firstOrNull()
+            
+            _selectedModel.value = currentSelected
+
+            if (currentSelected != null && llmManager.isModelDownloaded(currentSelected)) {
+                _uiState.value = GeneratorState.Idle(activeModel = currentSelected)
             } else {
                 _uiState.value = GeneratorState.ModelNotDownloaded(
-                    downloadMessage = "El modelo Gemma-3 1B IT local no se encuentra en el dispositivo."
+                    downloadMessage = "Descarga o importa un modelo para comenzar.",
+                    selectedModel = currentSelected
                 )
             }
         }
     }
 
-    /**
-     * Descarga el modelo OTA de forma asíncrona y lo inicializa.
-     */
-    fun downloadModel(url: String) {
-        val currentState = _uiState.value
-        if (currentState is GeneratorState.ModelNotDownloaded && currentState.isDownloading) return
+    fun openSettings() {
+        _isSettingsOpen.value = true
+        loadCatalogAndCheckModel()
+    }
 
-        _uiState.value = GeneratorState.ModelNotDownloaded(isDownloading = true, downloadMessage = "Iniciando descarga...")
+    fun closeSettings() {
+        _isSettingsOpen.value = false
+    }
+
+    /**
+     * Selecciona un modelo activo para las generaciones.
+     */
+    fun selectModel(model: AIModelInfo) {
+        _selectedModel.value = model
+        catalogRepository.setSelectedModelId(model.id)
+        
+        if (llmManager.isModelDownloaded(model)) {
+            val currentState = _uiState.value
+            if (currentState is GeneratorState.Idle) {
+                _uiState.value = currentState.copy(activeModel = model)
+            } else {
+                _uiState.value = GeneratorState.Idle(activeModel = model)
+            }
+        } else {
+            _uiState.value = GeneratorState.ModelNotDownloaded(
+                downloadMessage = "El modelo ${model.name} no está descargado.",
+                selectedModel = model
+            )
+        }
+    }
+
+    /**
+     * Descarga un modelo OTA emitiendo progreso visual.
+     */
+    fun downloadModel(model: AIModelInfo) {
+        if (_downloadingModelId.value != null) return
+
+        _downloadingModelId.value = model.id
+        _downloadProgress.value = 0f
+        _downloadMessage.value = "Iniciando descarga de ${model.name}..."
+
+        val currentState = _uiState.value
+        if (currentState is GeneratorState.ModelNotDownloaded) {
+            _uiState.value = currentState.copy(
+                isDownloading = true,
+                downloadMessage = _downloadMessage.value ?: "",
+                selectedModel = model
+            )
+        }
 
         viewModelScope.launch {
-            llmManager.downloadModel(url).collect { status ->
+            llmManager.downloadModel(model).collect { status ->
                 when (status) {
                     is LocalLLMManager.DownloadStatus.Progress -> {
-                        _uiState.value = GeneratorState.ModelNotDownloaded(
-                            downloadProgress = status.progress,
-                            downloadMessage = status.message,
-                            isDownloading = true
-                        )
-                    }
-                    is LocalLLMManager.DownloadStatus.Success -> {
-                        _uiState.value = GeneratorState.Generating(0.1f, "Inicializando motor de inferencia local...")
-                        val initResult = llmManager.initializeModel()
-                        if (initResult.isSuccess) {
-                            _uiState.value = GeneratorState.Idle()
-                        } else {
-                            _uiState.value = GeneratorState.ModelNotDownloaded(
-                                errorMessage = "Error al iniciar modelo tras descarga: ${initResult.exceptionOrNull()?.message}"
+                        _downloadProgress.value = status.progress
+                        _downloadMessage.value = status.message
+                        val state = _uiState.value
+                        if (state is GeneratorState.ModelNotDownloaded) {
+                            _uiState.value = state.copy(
+                                downloadProgress = status.progress,
+                                downloadMessage = status.message,
+                                isDownloading = true
                             )
                         }
                     }
+                    is LocalLLMManager.DownloadStatus.Success -> {
+                        _downloadingModelId.value = null
+                        _downloadProgress.value = 1f
+                        _downloadMessage.value = "Descarga completada"
+                        selectModel(model)
+                    }
                     is LocalLLMManager.DownloadStatus.Error -> {
+                        _downloadingModelId.value = null
+                        _downloadMessage.value = "Error: ${status.exception.message}"
                         _uiState.value = GeneratorState.ModelNotDownloaded(
                             errorMessage = "Fallo en la descarga: ${status.exception.message}",
-                            isDownloading = false
+                            isDownloading = false,
+                            selectedModel = model
                         )
                     }
+                }
             }
         }
     }
-}
+
+    /**
+     * Importa un archivo de modelo local desde el almacenamiento mediante SAF.
+     */
+    fun importLocalModel(uri: Uri, targetFilename: String) {
+        viewModelScope.launch {
+            _downloadingModelId.value = "importing"
+            _downloadProgress.value = 0f
+            _downloadMessage.value = "Importando modelo..."
+
+            llmManager.importModelFromUri(uri, targetFilename).collect { status ->
+                when (status) {
+                    is LocalLLMManager.DownloadStatus.Progress -> {
+                        _downloadProgress.value = status.progress
+                        _downloadMessage.value = status.message
+                    }
+                    is LocalLLMManager.DownloadStatus.Success -> {
+                        _downloadingModelId.value = null
+                        _downloadProgress.value = 1f
+                        // Recargar catálogo para incluir el nuevo archivo local
+                        loadCatalogAndCheckModel()
+                    }
+                    is LocalLLMManager.DownloadStatus.Error -> {
+                        _downloadingModelId.value = null
+                        _downloadMessage.value = "Error al importar: ${status.exception.message}"
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Elimina un modelo del almacenamiento local.
+     */
+    fun deleteModel(model: AIModelInfo) {
+        viewModelScope.launch {
+            llmManager.deleteModel(model)
+            loadCatalogAndCheckModel()
+        }
+    }
 
     /**
      * Extrae de forma asíncrona en IO el texto de un PDF o TXT.
@@ -112,21 +219,35 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /**
-     * Genera tarjetas en base a los apuntes del usuario mediante LiteRT-LM.
+     * Genera tarjetas en base a los apuntes.
+     * Carga el modelo bajo demanda (Lazy) y lo destruye de la RAM inmediatamente tras finalizar.
      */
     fun generateFlashcards(notes: String, deckName: String) {
         if (notes.isBlank()) {
-            _uiState.value = GeneratorState.Idle(notesInput = notes, deckName = deckName, errorMessage = "Los apuntes no pueden estar vacíos")
+            _uiState.value = GeneratorState.Idle(
+                notesInput = notes,
+                deckName = deckName,
+                errorMessage = "Los apuntes no pueden estar vacíos",
+                activeModel = _selectedModel.value
+            )
             return
         }
 
-        _uiState.value = GeneratorState.Generating(0.10f, "Analizando y dividiendo apuntes en secciones...")
-        generateFlashcardsChunked(notes, deckName)
+        val model = _selectedModel.value
+        if (model == null || !llmManager.isModelDownloaded(model)) {
+            _uiState.value = GeneratorState.ModelNotDownloaded(
+                downloadMessage = "Por favor, descarga o selecciona un modelo válido.",
+                selectedModel = model
+            )
+            return
+        }
+
+        _uiState.value = GeneratorState.Generating(0.05f, "Inicializando motor '${model.name}' en memoria...")
+        generateFlashcardsScoped(notes, deckName, model)
     }
 
     /**
-     * Divide los apuntes en fragmentos/párrafos óptimos para no saturar la ventana de atención
-     * del modelo local Gemma-2B (INT4) y garantizar máxima fidelidad factual.
+     * Divide los apuntes en secciones óptimas.
      */
     private fun splitIntoChunks(text: String): List<String> {
         val rawParagraphs = text.split(Regex("(\r?\n){2,}"))
@@ -148,68 +269,88 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
         return listOf(text.trim())
     }
 
-    private fun generateFlashcardsChunked(notes: String, deckName: String) {
+    /**
+     * Ejecución Scoped: Inicializa en RAM -> Infiere tokens -> Destruye modelo de RAM (close + GC).
+     */
+    private fun generateFlashcardsScoped(notes: String, deckName: String, model: AIModelInfo) {
         viewModelScope.launch(Dispatchers.Default) {
-            val chunks = splitIntoChunks(notes)
-            val totalChunks = chunks.size
             val allDrafts = mutableListOf<DraftCard>()
-
-            for ((chunkIndex, chunk) in chunks.withIndex()) {
-                val progressVal = 0.15f + (chunkIndex.toFloat() / totalChunks) * 0.70f
-                _uiState.value = GeneratorState.Generating(
-                    progress = progressVal,
-                    subtaskDescription = "Procesando sección ${chunkIndex + 1} de $totalChunks..."
-                )
-
-                val prompt = """
-                    <start_of_turn>user
-                    Lee este texto y extrae 1 pregunta directa de estudio con su respuesta corta (1 a 4 palabras).
-                    
-                    REGLAS:
-                    - La respuesta "A:" DEBE ser solo 1 a 4 palabras (el dato o concepto clave).
-                    - PROHIBIDO escribir frases completas en "A:".
-                    - Basado únicamente en el texto.
-
-                    FORMATO DE SALIDA:
-                    Q: [Pregunta directa y concisa]
-                    A: [1 a 4 palabras clave]
-
-                    TEXTO:
-                    $chunk<end_of_turn>
-                    <start_of_turn>model
-                    Q:
-                """.trimIndent()
-
-                var chunkResponse = "Q:"
-
-                llmManager.generateFlashcardsStream(prompt).collect { status ->
-                    when (status) {
-                        is LocalLLMManager.InferenceStatus.Token -> {
-                            chunkResponse += status.text
-                        }
-                        is LocalLLMManager.InferenceStatus.Completed -> {
-                            Log.d("KardiaAI", "Sección ${chunkIndex + 1}/$totalChunks completada:\n$chunkResponse")
-                        }
-                        is LocalLLMManager.InferenceStatus.Error -> {
-                            Log.e("KardiaAI", "Error en sección ${chunkIndex + 1}", status.exception)
-                        }
-                        else -> {}
-                    }
+            try {
+                // 1. Cargar modelo en memoria RAM
+                val initResult = llmManager.initializeModel(model)
+                if (initResult.isFailure) {
+                    _uiState.value = GeneratorState.Error(
+                        "Error al cargar el modelo '${model.name}' en memoria: ${initResult.exceptionOrNull()?.message}"
+                    )
+                    return@launch
                 }
 
-                val cards = parseFlashcardsForChunk(chunkResponse, chunk)
-                allDrafts.addAll(cards)
-            }
+                // 2. Procesar secciones
+                val chunks = splitIntoChunks(notes)
+                val totalChunks = chunks.size
 
-            if (allDrafts.isEmpty()) {
-                _uiState.value = GeneratorState.Error(
-                    "No se pudieron generar tarjetas para este texto. Intenta con un texto más claro o breve."
-                )
-            } else {
-                _uiState.value = GeneratorState.Drafting(
-                    deckName = deckName,
-                    drafts = allDrafts
-                )
+                for ((chunkIndex, chunk) in chunks.withIndex()) {
+                    val progressVal = 0.15f + (chunkIndex.toFloat() / totalChunks) * 0.70f
+                    _uiState.value = GeneratorState.Generating(
+                        progress = progressVal,
+                        subtaskDescription = "Procesando sección ${chunkIndex + 1} de $totalChunks..."
+                    )
+
+                    val prompt = """
+                        <start_of_turn>user
+                        Lee este texto y extrae 1 pregunta directa de estudio con su respuesta corta (1 a 4 palabras).
+                        
+                        REGLAS:
+                        - La respuesta "A:" DEBE ser solo 1 a 4 palabras (el dato o concepto clave).
+                        - PROHIBIDO escribir frases completas en "A:".
+                        - Basado únicamente en el texto.
+
+                        FORMATO DE SALIDA:
+                        Q: [Pregunta directa y concisa]
+                        A: [1 a 4 palabras clave]
+
+                        TEXTO:
+                        $chunk<end_of_turn>
+                        <start_of_turn>model
+                        Q:
+                    """.trimIndent()
+
+                    var chunkResponse = "Q:"
+
+                    llmManager.generateFlashcardsStream(prompt).collect { status ->
+                        when (status) {
+                            is LocalLLMManager.InferenceStatus.Token -> {
+                                chunkResponse += status.text
+                            }
+                            is LocalLLMManager.InferenceStatus.Completed -> {
+                                Log.d("KardiaAI", "Sección ${chunkIndex + 1}/$totalChunks completada:\n$chunkResponse")
+                            }
+                            is LocalLLMManager.InferenceStatus.Error -> {
+                                Log.e("KardiaAI", "Error en sección ${chunkIndex + 1}", status.exception)
+                            }
+                            else -> {}
+                        }
+                    }
+
+                    val cards = parseFlashcardsForChunk(chunkResponse, chunk)
+                    allDrafts.addAll(cards)
+                }
+
+                if (allDrafts.isEmpty()) {
+                    _uiState.value = GeneratorState.Error(
+                        "No se pudieron generar tarjetas para este texto. Intenta con un texto más claro o breve."
+                    )
+                } else {
+                    _uiState.value = GeneratorState.Drafting(
+                        deckName = deckName,
+                        drafts = allDrafts
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = GeneratorState.Error("Error durante la generación: ${e.message}")
+            } finally {
+                // 3. LIBERACIÓN INMEDIATA DE MEMORIA RAM
+                llmManager.close()
             }
         }
     }
@@ -241,7 +382,7 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /**
-     * Compila y exporta las tarjetas a un archivo .apkg local de forma 100% nativa.
+     * Compila y exporta las tarjetas a un archivo .apkg local.
      */
     fun exportToApkg(deckName: String, drafts: List<DraftCard>) {
         if (drafts.isEmpty()) {
@@ -249,7 +390,6 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
 
-        val originalState = _uiState.value
         _uiState.value = GeneratorState.Generating(0.90f, "Compilando base de datos SQLite (.apkg)...")
 
         viewModelScope.launch {
@@ -273,16 +413,10 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    /**
-     * Verifica si AnkiDroid está disponible para inyectar directamente.
-     */
     fun isAnkiDroidAvailable(): Boolean {
         return connector.isAnkiDroidAvailable()
     }
 
-    /**
-     * Inyecta las tarjetas directamente en la base de datos de AnkiDroid.
-     */
     fun importToAnkiDroid(deckName: String, drafts: List<DraftCard>) {
         if (drafts.isEmpty()) {
             _uiState.value = GeneratorState.Error("No hay tarjetas para importar.")
@@ -307,16 +441,15 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    /**
-     * Retorna a la pantalla de entrada principal.
-     */
     fun resetToIdle() {
-        _uiState.value = GeneratorState.Idle()
+        val model = _selectedModel.value
+        if (model != null && llmManager.isModelDownloaded(model)) {
+            _uiState.value = GeneratorState.Idle(activeModel = model)
+        } else {
+            _uiState.value = GeneratorState.ModelNotDownloaded(selectedModel = model)
+        }
     }
 
-    /**
-     * Parsea la respuesta en texto plano estructurado del modelo en una lista de DraftCards.
-     */
     private fun cleanAnswer(answer: String): String {
         var clean = answer.trim()
         val prefixes = listOf(
@@ -378,7 +511,6 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             front = front.replace("**", "").trim()
             back = cleanAnswer(back.replace("**", "").trim())
 
-            // Descartar placeholders
             if (front.contains("[Pregunta") || front.contains("[Frase") || back.contains("[Respuesta") || back.contains("[Dato")) {
                 continue
             }
@@ -395,7 +527,6 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
 
-        // Fallback line-by-line pairing si los bloques fallaron
         if (list.isEmpty()) {
             val lines = text.lines()
             var currentQ = ""
@@ -422,7 +553,6 @@ class GeneratorViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
 
-        // Generar SIEMPRE una tarjeta de autocompletar (Cloze) extraída literalmente del texto
         val sentences = sourceParagraph.split(Regex("(?<=[.!?])\\s+")).filter { it.trim().length > 15 }
         var clozeFront = ""
         var clozeBack = ""
